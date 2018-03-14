@@ -1,0 +1,164 @@
+---
+title: "Data608-Week07-Discussion"
+author: "Pavan Akula"
+date: "March 13, 2018"
+output:
+  html_document:
+    code_folding: hide
+---
+
+Using _Dow Jones Industrials Index_ and _Gold Price_ from 2002 to 2017, I will be investigating if there is a relationship between market direction and gold prices. Website https://www.sunshineprofits.com/gold-silver/dictionary/dow-jones-gold/ says stock prices and gold prices are inversely related, meaning when stock prices move upwards, gold prices move downward and vice versa.
+
+_Gold Price_ data is obtained from https://fred.stlouisfed.org/series/GOLDAMGBD228NLBM and _Dow Jones Industrials Index_ data is downloaded from https://finance.yahoo.com/quote/%5EDJI/history?period1=1009861200&period2=1514696400&interval=1d&filter=history&frequency=1d.
+
+I will be using following graphs
+
+- Double Y-axis Line Chart
+- Year over year Correlation Bar Chart
+- The Phillips Curve Chart
+
+According to _wikipedia_, _The Phillips Curve_ is best way find out inverse correlation.
+
+```{r, echo=T, message=F, warning=F}
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(ggrepel)
+library(tidyverse)
+library(scales)
+
+#Load data
+gold.df <- read.csv("D:\\CUNY\\608\\Week07\\GOLDAMGBD228NLBM_15.csv", header= TRUE, stringsAsFactors = F)
+colnames(gold.df) <- c("Date","Gold")
+
+gold.df <- gold.df %>% 
+  separate(col = Date, into = c("Year", "Month", "Day"), sep = "\\-") %>% 
+  select(Year, Month, Day, Gold) %>% 
+  mutate(Year = as.integer(Year),
+         Month = as.integer(Month),
+         Day = as.integer(Day),
+         Gold = as.numeric(Gold)
+         )
+
+df <- gold.df[complete.cases(gold.df),] %>% 
+  group_by(Year, Month) %>% 
+  filter(Day == max(Day)) %>% 
+  select(Year, Month, Gold) %>% 
+  # mutate(Month_Year = paste(as.character(Year), '-', as.character(Month))) %>% 
+  # select(Month_Year,Gold)
+  group_by(Year) %>%
+  filter(Month == max(Month)) %>%
+  select(Year, Gold)
+
+dow.df <- read.csv("D:\\CUNY\\608\\Week07\\DOW_15.csv", header= TRUE, stringsAsFactors = F)
+
+dow.df <- dow.df %>% 
+  separate(col = Date, into = c("Year", "Month", "Day"), sep = "\\-") %>% 
+  select(Year, Month, Day, Adj.Close) %>% 
+  mutate(Year = as.integer(Year),
+         Month = as.integer(Month),
+         Day = as.integer(Day),
+         Dow = as.numeric(Adj.Close)
+         )
+
+df <- dow.df[complete.cases(dow.df),] %>% 
+  group_by(Year, Month) %>% 
+  filter(Day == max(Day)) %>% 
+  select(Year, Month, Dow) %>% 
+  # mutate(Month_Year = paste(as.character(Year), '-', as.character(Month))) %>% 
+  # select(Month_Year,Dow) %>% 
+  # inner_join(df, by = "Month_Year")
+  group_by(Year) %>%
+  filter(Month == max(Month)) %>%
+  select(Year, Dow) %>%
+  inner_join(df, by = "Year")
+
+df <- data.frame(df)
+
+df %>% 
+  kable(format="html", caption = "Gold Price Vs. Dow Jones Industrials Index, 2002 - 2017") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), position = "left")
+```
+
+From the table we can clearly see in last 15 years, when stock market dropped in 2008, gold price went up.
+
+####Double Y-axis Line Chart
+
+The blue line indicates _Dow Jones Industrials Index_ movement and the red line suggests `Gold Price`. Left Y-axis show `Dow Jones` scale and right side Y-axis show `Gold Price`. We can see until the year 2007 both `Dow Jones` and `Gold Price` were moving upward. In 2007 stock market dropped, indicating a drop in `Dow Jones Index` while gold price moved up. In the latter part of the year, 2012 gold price dropped while stock market moved up.
+
+It is also noticeable from 2012 to 2015 stock market, and gold prices were moving in opposite direction.
+
+```{r, echo=T, message=F, warning=F}
+ggplot(df, aes(x = as.integer(Year))) +
+  geom_line(aes(y = Dow, colour = "Dow")) +
+  geom_line(aes(y = Gold*12, colour = "Gold")) +
+  scale_y_continuous(sec.axis = sec_axis(~./12,name = "Gold Price")) +
+  scale_x_continuous(breaks=seq(2001,2018,1)) +
+  scale_colour_manual(values = c("blue", "red")) +
+  labs(y = "Dow Jones Industrials Index", x = "Year", colour = "Chart", title = "Gold Price Vs. Dow Jones Industrials Index", subtitle = "Years 2002 - 2017") +
+  theme(legend.position = c(0.8, 0.9))
+```
+
+
+####Year over year Correlation Bar Chart
+
+The chart suggests that in last 15 years from 2002 to 2017, `Dow Jones Index` and `Gold Price` were in an inverse relationship four times.
+
+So, using 15 years data, we can conclude `Dow Jones Index` and `Gold Price` are entirely inversely correlated. We need more data to understand the relationship better.
+
+```{r, echo=T, message=F, warning=F}
+cor.df <- gold.df[complete.cases(gold.df),] %>% 
+  inner_join(dow.df[complete.cases(dow.df),], by=c("Year","Month","Day")) %>% 
+  select(Year,Month, Day, Gold, Dow) %>% 
+  group_by(Year, Month) %>% 
+  filter(Day == max(Day)) %>% 
+  select(Year, Month, Gold, Dow) %>% 
+  group_by(Year) %>% 
+  mutate(cor = cor(Gold,Dow)) %>%
+  select (Year, cor)
+
+cor.df <- data.frame(cor.df)
+cor.df <- cor.df %>% 
+  distinct() %>% 
+  mutate(Correlation = ifelse(cor > 0,'Positive','Negative'),
+         offset = ifelse(cor > 0, 1.5,-1.5))
+
+ggplot(cor.df, aes(x=Year, y=cor, fill=Correlation)) + 
+  geom_bar(stat='identity', position = 'identity') +
+  scale_fill_manual(values=c('red','#007a00'))+
+  geom_text(aes(label=round(cor,2)), vjust = cor.df$offset, color='white', size=3)+
+  scale_x_continuous(breaks=seq(2002,2017,2))+
+  labs(title = sprintf("Correlation"), subtitle = "Gold Price Vs. Dow Jones Industrials Index, 2002 - 2017") + xlab("Year") + ylab("Correlation Coefficient")
+
+```
+
+
+####The Phillips Curve Chart
+
+Using, The Phillips Curve we draw some inference when stock market drops do gold price go up. `Gold Price` is mapped as X-axis and `Dow Jones Industrials Index` is on Y-axis. The third dimension `Year` is mapped along the line indicating the rate of change.
+
+During years 2007 and 2008 stock market dropped, we notice a change in Y-axis and X-axis. Drop in Y-axis and increase in X-axis. From the year 2008 to 2012 rate of change in X-axis is higher than Y-axis, which means `Gold Price` increased more rapidly than `Dow Jones Industrials Index`. It tells investors were investing more in gold compared to stock market. From 2012 to 2013, `Dow Jones` moved higher more rapidly and `Gold Price` dropped, suggesting investors were making a shift in their investment strategy. Selling gold and moving into stocks. From 2013 to 2017 Y-axis increased rapidly than X-axis, indicating stock market moved higher quickly compared to gold price. It suggests investors are heavily investing in stocks compared to gold. 
+
+Purpose of the Phillips Curve was to identify the relationship between unemployment and inflation, but I think it is useful for other purposes also.
+
+
+```{r, echo=T, message=F, warning=F}
+ggplot(df, aes(x=Gold,y=Dow)) + 
+  geom_path() +
+  geom_point(color="red") +
+  geom_text_repel(data=df, aes(label=Year), size=3) +
+  scale_x_continuous(label=dollar_format(), breaks=seq(400,1600,200)) +
+  scale_y_continuous(label=comma) +
+  labs(title = sprintf("Phillips Curve"), subtitle = "Gold Price Vs. Dow Jones Industrials Index, 2002 - 2017") + xlab("Gold Price In Dollars") + ylab("Dow Jones Industrials Index")
+
+```
+
+
+####References
+- https://en.wikipedia.org/wiki/Phillips_curve
+- https://rpubs.com/escott8908/RGC_Ch3_Gar_Graphs
+- https://rstudio-pubs-static.s3.amazonaws.com/228019_f0c39e05758a4a51b435b19dbd321c23.html
+- https://courses.lumenlearning.com/boundless-economics/chapter/the-relationship-between-inflation-and-unemployment/
+- https://www.economist.com/blogs/graphicdetail/2017/11/daily-chart
+- https://stackoverflow.com/questions/8136770/conditional-text-formatting-with-ggplot
+- https://rpubs.com/MarkusLoew/226759
